@@ -91,7 +91,7 @@ def sanitize_ghdata(rec):
         # "Github username may only contain alphanumeric characters or hyphens'.
         # Sometimes bot have a "[bot]" suffix in the login, so we also match for that
         # Use \Z instead of $ to not match final newline only end of string.
-        if not re.match('[a-zA-Z0-9-]+(\[bot\])?\Z', rec['user']['login'], re.DOTALL):
+        if not re.match(r'[a-zA-Z0-9-]+(\[bot\])?\Z', rec['user']['login'], re.DOTALL):
             raise ValueError('Github username contains invalid characters: {}'.format(sanitize(rec['user']['login'])))
     return rec
 
@@ -264,6 +264,7 @@ def parse_arguments():
         githubmerge.pushmirrors (default: none, comma-separated list of mirrors to push merges of the master development branch to, e.g. `git@gitlab.com:<owner>/<repo>.git,git@github.com:<owner>/<repo>.git`),
         user.signingkey (mandatory),
         user.ghtoken (default: none).
+        githubmerge.merge-author-email (default: Email from git config),
         githubmerge.host (default: git@github.com),
         githubmerge.branch (no default),
         githubmerge.testcmd (default: none).
@@ -283,6 +284,7 @@ def main():
     repo = git_config_get('githubmerge.repository')
     host = git_config_get('githubmerge.host','git@github.com')
     opt_branch = git_config_get('githubmerge.branch',None)
+    merge_author_email = git_config_get('githubmerge.merge-author-email',None)
     testcmd = git_config_get('githubmerge.testcmd')
     ghtoken = git_config_get('user.ghtoken')
     signingkey = git_config_get('user.signingkey')
@@ -456,7 +458,10 @@ def main():
             reply = ask_prompt("Type 's' to sign off on the above merge, or 'x' to reject and exit.").lower()
             if reply == 's':
                 try:
-                    subprocess.check_call([GIT,'commit','-q','--gpg-sign','--amend','--no-edit'])
+                    config = ['-c', 'user.name=merge-script']
+                    if merge_author_email:
+                        config += ['-c', f'user.email={merge_author_email}']
+                    subprocess.check_call([GIT] + config + ['commit','-q','--gpg-sign','--amend','--no-edit','--reset-author'])
                     break
                 except subprocess.CalledProcessError:
                     print("Error while signing, asking again.",file=stderr)
